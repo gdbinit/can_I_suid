@@ -10,7 +10,8 @@ It is split between a TrustedBSD policy kernel extension and a userland applicat
 
 The execution of the suid binary is blocked until a user decision is made or a timeout is reached (in this case the default decision is to deny execution). NSAlert is used for user  decision, which is not pretty but my Cocoa skills are crap (you are definitely welcome to improve this, something like Little Snitch requests).
 
-I'm still experimenting with the workflow. Some binaries such as login and ps could be whitelisted because every time you start them you get a request. That might be a bit annoying.
+I'm still experimenting with the workflow. 
+Added a whitelisting feature (NSAlert makes that dialog a bit ugly). The whitelisting is not persistent over reboots and is per binary and UID (a whitelisted process executed by another user will trigger an authorisation request.)
 
 Because the driver can be loaded very early in the boot process (this trick unfortunately is not available anymore in Yosemite) it will only notify the userland application of any suid binary that executed before userland connected. From my tests no suid binaries are executed in the boot process so this can provide you a forensics tip.
 
