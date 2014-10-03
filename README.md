@@ -19,6 +19,8 @@ This sample code *only* works in Mavericks (tested with 10.9.2 and 10.9.5). The 
 The early boot startup is achieved by using AppleSecurityExtension in the driver plist and also using com.apple in the bundle identifier (check the plist). This is the reason why this trick doesn't work anymore in Yosemite because of the strict code signature checks. For Mavericks (and Mountain Lion?) you still need a valid code signing certificate with the kernel extension enabled.
 The userland application should be installed as a login item.
 
+Communication between kernel and userland is implemented using kernel control interface. This is ok for low volumes of data. For high volumes it has a bug and starts losing data with error 55.
+
 The userland application is based on code from Vadim Shpakovski - http://blog.shpakovski.com/2011/07/cocoa-popup-window-in-status-bar.html. Icons from images.google.com.
 
 Feel free to improve and submit pull requests. The Cocoa part definitely needs some love :-).
