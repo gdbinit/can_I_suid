@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Workspace
+   version = "1.0">
+   <FileRef
+      location = "group:can_i_suid_menubar/can_I_suid_menubar.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:can_i_suid_kext/can_i_suid_kext.xcodeproj">
+   </FileRef>
+</Workspace>
