@@ -54,13 +54,15 @@
 
 #define BUNDLE_ID "put.as.can_I_suid"
 
-enum action_t { kAllowSuid, kDenySuid };
+enum action_t { kAllowSuid, kDenySuid, kWhitelistSuid };
 
 struct __attribute__ ((packed)) userland_event {
     enum action_t action;               /* allow/deny access */
     uint32_t active;                    /* is userland connection established? */
     pid_t pid;                          /* target process PID */
+    uid_t uid;                          /* target process UID */
     pid_t ppid;                         /* parent PID */
+    uid_t puid;                         /* parent process UID */
     char path[MAXPATHLEN];              /* target binary path */
     char parent_name[MAXCOMLEN+1];      /* parent process name */
 };

@@ -62,6 +62,10 @@
 #include <security/mac_policy.h>
 #include <Availability.h>
 #include <sys/vnode.h>
+#include <sys/queue.h>
+#include <sys/malloc.h>
+#include <libkern/OSMalloc.h>
+#include <sys/kauth.h>
 
 #include "userland_comms.h"
 #include "shared.h"
@@ -76,6 +80,18 @@ extern struct to_userland_queue g_to_queue;
 extern struct from_userland_queue g_from_queue;
 
 int g_comms_active = 0;
+
+static OSMallocTag g_osmalloc_tag;
+
+SLIST_HEAD(whitelist_slist, whitelist_entry);
+static struct whitelist_slist g_whitelist;
+
+struct whitelist_entry
+{
+    struct vnode *vnode;
+    uid_t uid;
+    SLIST_ENTRY(whitelist_entry) entries;
+};
 
 #pragma mark -
 #pragma mark TrustedBSD Hooks
@@ -125,6 +141,7 @@ can_i_suid_vnode_check_exec(kauth_cred_t cred,
      */
     if (g_comms_active == 0)
     {
+        SLIST_INIT(&g_whitelist);
         start_comms();
         g_comms_active++;
     }
@@ -149,6 +166,21 @@ can_i_suid_vnode_check_exec(kauth_cred_t cred,
     /* verify if binary has any SUID bit set */
     if (vap.va_mode & S_ISUID || vap.va_mode & S_ISGID)
     {
+        /* retrieve the UID of the process so we whitelist per user */
+        uid_t target_uid = kauth_getuid();
+        
+        struct whitelist_entry *entry = NULL;
+        /* verify if this vnode is whitelisted */
+        SLIST_FOREACH(entry, &g_whitelist, entries)
+        {
+            /* verify that the vnodes match and also the UID because we want whitelist per user and not global */
+            if (entry->vnode == vp && entry->uid == kauth_getuid())
+            {
+                /* there's only whitelisting so let it proceed */
+                return 0;
+            }
+        }
+        
         struct userland_event event = {0};
         
         int pathbuff_len = sizeof(event.path);
@@ -176,6 +208,23 @@ can_i_suid_vnode_check_exec(kauth_cred_t cred,
         event.action = kDenySuid;
         event.pid = proc_pid(target_proc);
         event.ppid = parent_pid;
+        event.uid = target_uid;
+        /* parent info */
+        /* XXX: not sure if there's an easier way to get this info */
+        proc_t parent_proc = proc_find(parent_pid);
+        if (parent_proc != (struct proc*)0)
+        {
+            kauth_cred_t cred = kauth_cred_proc_ref(parent_proc);
+            if ( IS_VALID_CRED(cred) != 0 )
+            {
+                /* retrieve parent UID */
+                event.puid = kauth_cred_getuid(cred);
+                /* release references */
+                kauth_cred_unref(&cred);
+            }
+            /* release references */
+            proc_rele(parent_proc);
+        }
         /* if we have a connection with userland we should wait for response */
         if (g_connection_to_userland)
         {
@@ -198,6 +247,19 @@ can_i_suid_vnode_check_exec(kauth_cred_t cred,
                 if ( get_authorization_status(event.pid, &auth_status) == 0 )
                 {
                     ERROR_MSG("Found return result!");
+                    if (auth_status == kWhitelistSuid)
+                    {
+                        /* add to the list */
+                        struct whitelist_entry *new_entry = OSMalloc(sizeof(struct whitelist_entry), g_osmalloc_tag);
+                        if (new_entry != NULL)
+                        {
+                            new_entry->vnode = vp;
+                            new_entry->uid = target_uid;
+                            SLIST_INSERT_HEAD(&g_whitelist, new_entry, entries);
+                        }
+                        /* set the status to allow because whitelist means always access */
+                        auth_status = kAllowSuid;
+                    }
                     return auth_status;
                 }
                 /* timeout exceed return default value */
@@ -229,6 +291,13 @@ kern_return_t can_i_suid_kext_stop(kmod_info_t *ki, void *d);
 
 kern_return_t can_i_suid_kext_start(kmod_info_t * ki, void *d)
 {
+    g_osmalloc_tag = OSMalloc_Tagalloc(BUNDLE_ID, OSMT_DEFAULT);
+    if (g_osmalloc_tag == 0)
+    {
+        ERROR_MSG("Failed to initialize OSMalloc tag.");
+        return KERN_FAILURE;
+    }
+
     if ( mac_policy_register(&can_i_suid_policy_conf, &can_i_suid_handle, d) != KERN_SUCCESS )
     {
         ERROR_MSG("Failed to start Can I SUID TrustedBSD module!");
@@ -241,7 +310,22 @@ kern_return_t can_i_suid_kext_start(kmod_info_t * ki, void *d)
 kern_return_t can_i_suid_kext_stop(kmod_info_t *ki, void *d)
 {
     kern_return_t kr = 0;
-    stop_comms();
+    if ( stop_comms() != KERN_SUCCESS )
+    {
+        return KERN_FAILURE;
+    }
+    /* cleanup the whitelist */
+    struct whitelist_entry *entry = NULL;
+    struct whitelist_entry *next_entry = NULL;
+    SLIST_FOREACH_SAFE(entry, &g_whitelist, entries, next_entry)
+    {
+        SLIST_REMOVE(&g_whitelist, entry, whitelist_entry, entries);
+        OSFree(entry, sizeof(struct whitelist_entry), g_osmalloc_tag);
+    }
+    if (g_osmalloc_tag)
+    {
+        OSMalloc_Tagfree(g_osmalloc_tag);
+    }
     
     if ( (kr = mac_policy_unregister(can_i_suid_handle)) != KERN_SUCCESS)
     {

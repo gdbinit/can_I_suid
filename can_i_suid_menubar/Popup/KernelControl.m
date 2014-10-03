@@ -135,8 +135,8 @@ static void kernel_notifications(void);
             NSUserNotification *notification = [[NSUserNotification alloc] init];
             notification.title = @"SUID notification";
             notification.hasActionButton = NO;
-            notification.informativeText = [NSString stringWithFormat:@"Binary %s with PID %d and parent %s (%d).",
-                                            data.path, data.pid, data.parent_name, data.ppid];
+            notification.informativeText = [NSString stringWithFormat:@"Binary %s with PID %d and UID %d.\rParent %s with PID %d and UID %d.",
+                                            data.path, data.pid, data.uid, data.parent_name, data.ppid, data.puid];
             
             [[NSUserNotificationCenter defaultUserNotificationCenter] deliverNotification:notification];
         }
@@ -147,9 +147,10 @@ static void kernel_notifications(void);
                 NSAlert *alert = [[NSAlert alloc] init];
                 [alert addButtonWithTitle:@"Allow"];
                 [alert addButtonWithTitle:@"Deny"];
+                [alert addButtonWithTitle:@"Whitelist"];
                 [alert setMessageText:@"SUID Execution"];
-                NSString *informativeText = [NSString stringWithFormat:@"SUID binary %s with PID %d and parent %s (%d).",
-                                             data.path, data.pid, data.parent_name, data.ppid];
+                NSString *informativeText = [NSString stringWithFormat:@"Binary %s with PID %d and UID %d.\rParent %s with PID %d and UID %d.",
+                                             data.path, data.pid, data.uid, data.parent_name, data.ppid, data.puid];
                 [alert setInformativeText:informativeText];
                 [alert setAlertStyle:NSCriticalAlertStyle];
                 NSInteger buttonPressed = [alert runModal];
@@ -166,6 +167,10 @@ static void kernel_notifications(void);
                 else if (buttonPressed ==  NSAlertSecondButtonReturn)
                 {
                     reply.action = kDenySuid;
+                }
+                else if (buttonPressed == NSAlertThirdButtonReturn)
+                {
+                    reply.action = kWhitelistSuid;
                 }
                 /* try to send to kernel - if it fails kernel will timeout and assume the default action value */
                 if ( setsockopt(_sock, SYSPROTO_CONTROL, operation, (void*)&reply, (socklen_t)sizeof(struct userland_event)) )

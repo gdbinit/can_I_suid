@@ -57,6 +57,7 @@
 #include <sys/proc.h>
 #include <kern/locks.h>
 #include <sys/kern_control.h>
+#include <sys/malloc.h>
 
 #include "logging.h"
 #include "config.h"
@@ -145,6 +146,11 @@ start_comms(void)
 kern_return_t
 stop_comms(void)
 {
+    /* can't unload kext if there are clients connected else it will lead to kernel panic */
+    if (g_kcontrol.max_clients > 0)
+    {
+        return KERN_FAILURE;
+    }
     errno_t error = 0;
     // remove kernel control
     error = ctl_deregister(g_kcontrol.ctl_ref);
